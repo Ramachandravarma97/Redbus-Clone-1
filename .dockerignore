@@ -1,0 +1,7 @@
+k8s/
+.git
+.gitignore
+README.md
+node_modules/
+*.log
+

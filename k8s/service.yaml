@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: redbus-web
+  namespace: redbus
+spec:
+  selector:
+    app: redbus-web
+  ports:
+    - port: 80
+      targetPort: 80
+  type: LoadBalancer
+
