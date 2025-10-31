@@ -7,6 +7,7 @@ pipeline {
     IMAGE_NAME    = "redbus-clone"
     IMAGE_TAG     = "${env.BUILD_NUMBER}"
     FULL_IMAGE    = "${REGISTRY}/${DOCKERHUB_NS}/${IMAGE_NAME}:${IMAGE_TAG}"
+    AWS_REGION    = "ap-south-1"
   }
 
   stages {
@@ -39,28 +40,33 @@ pipeline {
 
     stage('Deploy to Kubernetes') {
       steps {
-        withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG_FILE')]) {
-          sh '''
-            set -e
+        // ✅ Use your AWS credential ID here (no need to add access/secret keys manually)
+        withAWS(credentials: '2fd57bc0-0be1-44fc-acb6-9d7ccb278e6d', region: 'ap-south-1') {
+          withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG_FILE')]) {
+            sh '''
+              set -e
+              export KUBECONFIG="${KUBECONFIG_FILE}"
+              export AWS_DEFAULT_REGION="${AWS_REGION}"
 
-            # Use kubeconfig from Jenkins credential
-            export KUBECONFIG="${KUBECONFIG_FILE}"
+              # Validate AWS identity & cluster
+              aws sts get-caller-identity
+              kubectl cluster-info
 
-            # Ensure namespace exists (safe if already present)
-            kubectl apply -f k8s/namespace.yaml
+              # Ensure namespace exists (safe if already present)
+              kubectl apply -f k8s/namespace.yaml
 
-            # Render deployment with the newly-pushed image
-            # Keep the placeholder literal with \${IMAGE_TAG} so sed matches it
-            sed -e "s#ramachandravarma97/redbus-clone:\\${IMAGE_TAG}#${FULL_IMAGE}#g" \
-              k8s/deployment.yaml > /tmp/deploy.yaml
+              # Substitute image tag dynamically
+              sed -e "s#ramachandravarma97/redbus-clone:\\${IMAGE_TAG}#${FULL_IMAGE}#g" \
+                k8s/deployment.yaml > /tmp/deploy.yaml
 
-            kubectl apply -f /tmp/deploy.yaml
-            kubectl apply -f k8s/service.yaml
+              kubectl apply -f /tmp/deploy.yaml
+              kubectl apply -f k8s/service.yaml
 
-            kubectl -n redbus rollout status deploy/redbus-web --timeout=180s
-            kubectl -n redbus get pods
-            kubectl -n redbus get svc redbus-web
-          '''
+              kubectl -n redbus rollout status deploy/redbus-web --timeout=180s
+              kubectl -n redbus get pods
+              kubectl -n redbus get svc redbus-web
+            '''
+          }
         }
       }
     }
